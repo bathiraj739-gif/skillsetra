@@ -118,9 +118,14 @@ export interface StartAttemptResponse {
   }
   started_at?: string
   startedAt?: string
+  expires_at?: string
+  expiresAt?: string
+  remaining_seconds?: number
+  remainingSeconds?: number
   questions?: ExamQuestion[]
   saved_answers?: SavedAnswer[]
 }
+
 
 export interface AnswerPayload {
   attempt_id?: string
@@ -130,6 +135,21 @@ export interface AnswerPayload {
   selected_answer?: QuestionOption | null
   selectedOption?: QuestionOption | null
   is_marked_for_review?: boolean
+}
+
+export interface AnswerReportItem {
+  question_number: number
+  question_id: string
+  question_text: string
+  option_a: string
+  option_b: string
+  option_c: string
+  option_d: string
+  selected_option: QuestionOption | null
+  correct_option: QuestionOption
+  status: 'Correct' | 'Wrong' | 'Unanswered'
+  marks_awarded: number
+  question_marks: number
 }
 
 export interface Result {
@@ -159,4 +179,6 @@ export interface Result {
   register_number?: string
   department?: string
   assessment_title?: string
+  answer_report?: AnswerReportItem[]
 }
+

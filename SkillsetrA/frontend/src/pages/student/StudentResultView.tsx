@@ -171,6 +171,157 @@ export const StudentResultView: React.FC = () => {
           </Link>
         </div>
       </div>
+
+      {/* Answer Report Section */}
+      {result.answer_report && result.answer_report.length > 0 && (
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-xl shadow-slate-200/40 space-y-6 text-left">
+          <div className="border-b border-slate-100 pb-4">
+            <h2 className="text-xl font-extrabold text-slate-900">Answer Report</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Detailed question-by-question response breakdown for this attempt.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            {result.answer_report.map((item) => {
+              const getOptionText = (optKey: string | null) => {
+                if (!optKey) return 'Not Answered'
+                const keyUpper = optKey.toUpperCase()
+                if (keyUpper === 'A') return `A. ${item.option_a}`
+                if (keyUpper === 'B') return `B. ${item.option_b}`
+                if (keyUpper === 'C') return `C. ${item.option_c}`
+                if (keyUpper === 'D') return `D. ${item.option_d}`
+                return optKey
+              }
+
+              const studentAnsText = getOptionText(item.selected_option)
+              const correctAnsText = getOptionText(item.correct_option)
+
+              const isCorrect = item.status === 'Correct'
+              const isWrong = item.status === 'Wrong'
+
+              return (
+                <div
+                  key={item.question_id || item.question_number}
+                  className="p-5 sm:p-6 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-4"
+                >
+                  {/* Header: Question Number, Status Badge, Marks */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
+                    <span className="text-sm font-extrabold text-indigo-700">
+                      Question {item.question_number}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-3 py-0.5 rounded-full text-xs font-bold ${
+                          isCorrect
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : isWrong
+                            ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                            : 'bg-slate-200 text-slate-700 border border-slate-300'
+                        }`}
+                      >
+                        Status: {item.status}
+                      </span>
+                      <span className="text-xs font-bold text-slate-700 bg-white px-2.5 py-0.5 rounded-md border border-slate-200">
+                        Marks: {item.marks_awarded} / {item.question_marks}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Question Text */}
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Question:</p>
+                    <p className="text-sm font-semibold text-slate-900 leading-relaxed whitespace-pre-line">
+                      {item.question_text}
+                    </p>
+                  </div>
+
+                  {/* Options List */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <div
+                      className={`p-2.5 rounded-xl text-xs font-medium border ${
+                        item.correct_option === 'A'
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold'
+                          : item.selected_option === 'A' && isWrong
+                          ? 'bg-rose-50 border-rose-300 text-rose-900'
+                          : 'bg-white border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      <span className="font-bold mr-1">A.</span> {item.option_a}
+                    </div>
+
+                    <div
+                      className={`p-2.5 rounded-xl text-xs font-medium border ${
+                        item.correct_option === 'B'
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold'
+                          : item.selected_option === 'B' && isWrong
+                          ? 'bg-rose-50 border-rose-300 text-rose-900'
+                          : 'bg-white border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      <span className="font-bold mr-1">B.</span> {item.option_b}
+                    </div>
+
+                    <div
+                      className={`p-2.5 rounded-xl text-xs font-medium border ${
+                        item.correct_option === 'C'
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold'
+                          : item.selected_option === 'C' && isWrong
+                          ? 'bg-rose-50 border-rose-300 text-rose-900'
+                          : 'bg-white border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      <span className="font-bold mr-1">C.</span> {item.option_c}
+                    </div>
+
+                    <div
+                      className={`p-2.5 rounded-xl text-xs font-medium border ${
+                        item.correct_option === 'D'
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold'
+                          : item.selected_option === 'D' && isWrong
+                          ? 'bg-rose-50 border-rose-300 text-rose-900'
+                          : 'bg-white border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      <span className="font-bold mr-1">D.</span> {item.option_d}
+                    </div>
+                  </div>
+
+                  {/* Student Answer vs Correct Answer Summary */}
+                  <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-white border border-slate-200">
+                      <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
+                        Student Answer:
+                      </span>
+                      <span
+                        className={`font-extrabold ${
+                          isCorrect
+                            ? 'text-emerald-700'
+                            : isWrong
+                            ? 'text-rose-700'
+                            : 'text-slate-500 italic'
+                        }`}
+                      >
+                        {studentAnsText}
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-white border border-slate-200">
+                      <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
+                        Correct Answer:
+                      </span>
+                      <span className="font-extrabold text-emerald-700">
+                        {correctAnsText}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+

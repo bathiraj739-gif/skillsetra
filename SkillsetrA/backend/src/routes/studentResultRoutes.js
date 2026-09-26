@@ -8,6 +8,8 @@ const { requireStudent } = require('../middleware/studentMiddleware');
 router.use(authenticateToken, requireStudent);
 
 router.get('/', resultController.getStudentResults);
+router.get('/:id/report', resultController.getStudentAttemptReport);
 router.get('/:id', resultController.getStudentResultById);
 
 module.exports = router;
+

@@ -166,6 +166,61 @@ async function getResults(filters) {
   };
 }
 
+async function getAnswerReportForAttempt(attemptId) {
+  const query = `
+    SELECT 
+      aq.question_order,
+      q.id AS question_id,
+      q.question_text,
+      q.option_a,
+      q.option_b,
+      q.option_c,
+      q.option_d,
+      q.correct_option,
+      q.marks AS question_marks,
+      ans.selected_option,
+      ans.is_correct,
+      ans.marks_awarded
+    FROM attempt_questions aq
+    JOIN questions q ON aq.question_id = q.id
+    LEFT JOIN answers ans ON ans.attempt_id = aq.attempt_id AND ans.question_id = aq.question_id
+    WHERE aq.attempt_id = $1
+    ORDER BY aq.question_order ASC
+  `;
+  const res = await pool.query(query, [attemptId]);
+
+  return res.rows.map((row, idx) => {
+    const selectedOpt = row.selected_option ? row.selected_option.trim() : null;
+    const correctOpt = row.correct_option ? row.correct_option.trim() : null;
+    const questionMarks = parseInt(row.question_marks || 1, 10);
+    const marksAwarded = parseFloat(row.marks_awarded || 0);
+
+    let status = 'Unanswered';
+    if (selectedOpt) {
+      if (row.is_correct === true || selectedOpt === correctOpt) {
+        status = 'Correct';
+      } else {
+        status = 'Wrong';
+      }
+    }
+
+    return {
+      question_number: row.question_order || (idx + 1),
+      question_id: row.question_id,
+      question_text: row.question_text,
+      option_a: row.option_a,
+      option_b: row.option_b,
+      option_c: row.option_c,
+      option_d: row.option_d,
+      selected_option: selectedOpt,
+      correct_option: correctOpt,
+      status: status,
+      marks_awarded: marksAwarded,
+      question_marks: questionMarks
+    };
+  });
+}
+
 async function getResultById(id) {
   const query = `
     ${RESULT_SELECT_SQL}
@@ -173,7 +228,9 @@ async function getResultById(id) {
   `;
   const res = await pool.query(query, [id]);
   if (res.rows.length === 0) return null;
-  return mapResultRow(res.rows[0]);
+  const mapped = mapResultRow(res.rows[0]);
+  mapped.answer_report = await getAnswerReportForAttempt(res.rows[0].attempt_id);
+  return mapped;
 }
 
 // Student logic
@@ -209,12 +266,39 @@ async function getStudentResultById(id, studentUserId) {
     throw new Error('UNAUTHORIZED_ACCESS');
   }
 
-  return mapResultRow(row);
+  const mapped = mapResultRow(row);
+  mapped.answer_report = await getAnswerReportForAttempt(row.attempt_id);
+  return mapped;
+}
+
+async function getStudentAttemptReport(attemptId, studentUserId) {
+  const studentRes = await pool.query(`SELECT id FROM students WHERE user_id = $1`, [studentUserId]);
+  if (studentRes.rows.length === 0) throw new Error('STUDENT_NOT_FOUND');
+  const studentId = studentRes.rows[0].id;
+
+  const attemptRes = await pool.query(
+    `SELECT id, student_id, status FROM attempts WHERE id = $1 OR id = (SELECT attempt_id FROM results WHERE id = $1)`,
+    [attemptId]
+  );
+  if (attemptRes.rows.length === 0) throw new Error('ATTEMPT_NOT_FOUND');
+  const attempt = attemptRes.rows[0];
+
+  if (attempt.student_id !== studentId) {
+    throw new Error('UNAUTHORIZED_ACCESS');
+  }
+
+  if (attempt.status !== 'SUBMITTED' && attempt.status !== 'AUTO_SUBMITTED') {
+    throw new Error('ATTEMPT_NOT_COMPLETED');
+  }
+
+  return await getAnswerReportForAttempt(attempt.id);
 }
 
 module.exports = {
   getResults,
   getResultById,
   getStudentResults,
-  getStudentResultById
+  getStudentResultById,
+  getStudentAttemptReport
 };
+

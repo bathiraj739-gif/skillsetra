@@ -30,6 +30,8 @@ export const ExamInterface: React.FC = () => {
 
   const [showSubmitModal, setShowSubmitModal] = useState(false)
 
+  const [autoSubmittedNotice, setAutoSubmittedNotice] = useState(false)
+
   useEffect(() => {
     if (!assessmentId) return
     initAttempt()
@@ -42,8 +44,10 @@ export const ExamInterface: React.FC = () => {
       const res = await attemptService.startAttempt(assessmentId!)
       setAttemptData(res)
 
-      if (res.status === 'submitted' || res.status === 'auto_submitted') {
-        navigate('/student/results')
+      const statusLower = (res.status || '').toLowerCase()
+      if (statusLower === 'submitted' || statusLower === 'auto_submitted' || statusLower === 'completed') {
+        const attemptId = res.attempt_id || res.id
+        navigate(`/student/result/${attemptId}`)
         return
       }
 
@@ -63,12 +67,28 @@ export const ExamInterface: React.FC = () => {
       setAnswers(initialAnswers)
       setMarkedForReview(initialMarked)
 
-      const startedAt = new Date(res.started_at || res.startedAt || Date.now()).getTime()
-      const durationMins = res.assessment?.duration_minutes || 30
-      const durationMs = durationMins * 60 * 1000
-      const now = new Date().getTime()
-      const elapsedMs = now - startedAt
-      const remainingSec = Math.max(0, Math.floor((durationMs - elapsedMs) / 1000))
+      let remainingSec = 0
+      if (res.remaining_seconds != null || res.remainingSeconds != null) {
+        remainingSec = Math.max(0, Number(res.remaining_seconds ?? res.remainingSeconds))
+      } else {
+        const startedAt = new Date(res.started_at || res.startedAt || Date.now()).getTime()
+        const durationMins = res.assessment?.duration_minutes || 30
+        const durationMs = durationMins * 60 * 1000
+        const now = new Date().getTime()
+        const elapsedMs = now - startedAt
+        remainingSec = Math.max(0, Math.floor((durationMs - elapsedMs) / 1000))
+      }
+
+      if (remainingSec <= 0) {
+        const attemptId = res.attempt_id || res.id
+        if (attemptId) {
+          await attemptService.submitAttempt(attemptId)
+          navigate(`/student/result/${attemptId}`)
+        } else {
+          navigate('/student/results')
+        }
+        return
+      }
 
       setTimeLeftSeconds(remainingSec)
     } catch (err: any) {
@@ -79,28 +99,37 @@ export const ExamInterface: React.FC = () => {
     }
   }
 
-  const handleFinalSubmit = useCallback(async () => {
-    if (!attemptData?.attempt_id || submitting) return
+  const handleFinalSubmit = useCallback(async (isAutoParam?: any) => {
+    const isAuto = typeof isAutoParam === 'boolean' ? isAutoParam : false
+    const attId = attemptData?.attempt_id || attemptData?.id
+    if (!attId || submitting) return
     setSubmitting(true)
+
+    if (isAuto) {
+      setAutoSubmittedNotice(true)
+    }
     try {
-      const res = await attemptService.submitAttempt(attemptData.attempt_id)
-      if (res?.result_id) {
-        navigate(`/student/result/${res.result_id}`)
-      } else {
-        navigate('/student/results')
-      }
+      const res = await attemptService.submitAttempt(attId)
+      const targetId = res?.result_id || res?.result?.id || res?.id || attId
+      setTimeout(() => {
+        navigate(`/student/result/${targetId}`)
+      }, isAuto ? 1500 : 0)
     } catch (err: any) {
       console.error('Submission failed:', err)
-      alert('Error submitting test: ' + (err?.message || 'Unknown error'))
-      setSubmitting(false)
+      if (!isAuto) {
+        alert('Error submitting test: ' + (err?.message || 'Unknown error'))
+        setSubmitting(false)
+      } else {
+        navigate(`/student/result/${attId}`)
+      }
     }
-  }, [attemptData?.attempt_id, navigate, submitting])
+  }, [attemptData?.attempt_id, attemptData?.id, navigate, submitting])
 
   useEffect(() => {
     if (timeLeftSeconds === null) return
 
     if (timeLeftSeconds <= 0) {
-      handleFinalSubmit()
+      handleFinalSubmit(true)
       return
     }
 
@@ -108,7 +137,7 @@ export const ExamInterface: React.FC = () => {
       setTimeLeftSeconds((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(interval)
-          handleFinalSubmit()
+          handleFinalSubmit(true)
           return 0
         }
         return prev - 1
@@ -125,26 +154,31 @@ export const ExamInterface: React.FC = () => {
   }
 
   const handleSelectOption = (option: QuestionOption) => {
-    if (!attemptData || !attemptData.questions) return
+    if (!attemptData || !attemptData.questions || submitting || (timeLeftSeconds !== null && timeLeftSeconds <= 0)) return
     const currentQ = attemptData.questions[currentIndex]
     if (!currentQ) return
 
     const newAns = { ...answers, [currentQ.id]: option }
     setAnswers(newAns)
 
+    const attId = attemptData.attempt_id || attemptData.id || ''
     attemptService.saveAnswer({
-      attempt_id: attemptData.id,
-      attemptId: attemptData.id,
+      attempt_id: attId,
+      attemptId: attId,
       question_id: currentQ.id,
       questionId: currentQ.id,
       selected_answer: option,
       selectedOption: option,
       is_marked_for_review: !!markedForReview[currentQ.id],
+    }).catch((err) => {
+      if (err?.message?.includes('Time expired') || err?.response?.data?.message?.includes('expired')) {
+        handleFinalSubmit(true)
+      }
     })
   }
 
   const handleClearAnswer = () => {
-    if (!attemptData || !attemptData.questions) return
+    if (!attemptData || !attemptData.questions || submitting || (timeLeftSeconds !== null && timeLeftSeconds <= 0)) return
     const currentQ = attemptData.questions[currentIndex]
     if (!currentQ) return
 
@@ -152,16 +186,22 @@ export const ExamInterface: React.FC = () => {
     delete newAns[currentQ.id]
     setAnswers(newAns)
 
+    const attId = attemptData.attempt_id || attemptData.id || ''
     attemptService.saveAnswer({
-      attempt_id: attemptData.id,
-      attemptId: attemptData.id,
+      attempt_id: attId,
+      attemptId: attId,
       question_id: currentQ.id,
       questionId: currentQ.id,
       selected_answer: null,
       selectedOption: null,
       is_marked_for_review: !!markedForReview[currentQ.id],
+    }).catch((err) => {
+      if (err?.message?.includes('Time expired') || err?.response?.data?.message?.includes('expired')) {
+        handleFinalSubmit(true)
+      }
     })
   }
+
 
   const handleToggleMarkReview = () => {
     if (!attemptData || !attemptData.questions) return
@@ -468,7 +508,7 @@ export const ExamInterface: React.FC = () => {
               </button>
               <button
                 disabled={submitting}
-                onClick={handleFinalSubmit}
+                onClick={() => handleFinalSubmit(false)}
                 className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md disabled:opacity-50"
               >
                 {submitting ? (
@@ -484,6 +524,25 @@ export const ExamInterface: React.FC = () => {
           </div>
         </div>
       )}
+
+      {autoSubmittedNotice && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 max-w-md w-full rounded-3xl p-8 space-y-4 shadow-2xl text-center text-white">
+            <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center mx-auto">
+              <Clock className="w-8 h-8 animate-pulse" />
+            </div>
+            <h2 className="text-xl font-bold text-white">Time Expired!</h2>
+            <p className="text-xs text-slate-300">
+              Time expired. Your test has been automatically submitted.
+            </p>
+            <div className="pt-2 flex items-center justify-center gap-2 text-indigo-400 text-xs font-semibold">
+              <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+              <span>Generating your evaluation report...</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+

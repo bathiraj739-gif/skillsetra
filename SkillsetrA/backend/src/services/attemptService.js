@@ -9,6 +9,58 @@ function shuffleArray(array) {
   }
 }
 
+async function checkAndHandleExpiration(attemptId, studentUserId) {
+  const studentRes = await pool.query(`SELECT id FROM students WHERE user_id = $1`, [studentUserId]);
+  if (studentRes.rows.length === 0) throw new Error('STUDENT_NOT_FOUND');
+  const studentId = studentRes.rows[0].id;
+
+  const attemptRes = await pool.query(
+    `SELECT a.id, a.student_id, a.status, a.started_at, a.submitted_at, ass.duration_minutes
+     FROM attempts a
+     JOIN assessments ass ON a.assessment_id = ass.id
+     WHERE a.id = $1`,
+    [attemptId]
+  );
+  if (attemptRes.rows.length === 0) throw new Error('ATTEMPT_NOT_FOUND');
+  const attempt = attemptRes.rows[0];
+
+  if (attempt.student_id !== studentId) throw new Error('UNAUTHORIZED_ACCESS');
+
+  const durationMinutes = parseInt(attempt.duration_minutes || 30, 10);
+  const startedAtMs = new Date(attempt.started_at).getTime();
+  const expiresAtMs = startedAtMs + (durationMinutes * 60 * 1000);
+  const nowMs = Date.now();
+  const isExpired = nowMs >= expiresAtMs;
+  const remainingSeconds = Math.max(0, Math.floor((expiresAtMs - nowMs) / 1000));
+
+  if (isExpired && (attempt.status === 'IN_PROGRESS' || attempt.status === 'NOT_STARTED')) {
+    const submitResult = await submitAttempt(attempt.id, studentUserId, 'AUTO_SUBMITTED');
+    return {
+      attemptId: attempt.id,
+      status: 'AUTO_SUBMITTED',
+      startedAt: attempt.started_at,
+      submittedAt: submitResult.result?.completed_at || new Date().toISOString(),
+      durationMinutes,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+      remainingSeconds: 0,
+      isExpired: true,
+      autoSubmitted: true,
+      result: submitResult.result
+    };
+  }
+
+  return {
+    attemptId: attempt.id,
+    status: attempt.status,
+    startedAt: attempt.started_at,
+    submittedAt: attempt.submitted_at,
+    durationMinutes,
+    expiresAt: new Date(expiresAtMs).toISOString(),
+    remainingSeconds: (attempt.status === 'IN_PROGRESS' || attempt.status === 'NOT_STARTED') ? remainingSeconds : 0,
+    isExpired
+  };
+}
+
 async function startAttempt(assignmentOrAssessmentId, studentUserId) {
   const client = await pool.connect();
   try {
@@ -30,7 +82,6 @@ async function startAttempt(assignmentOrAssessmentId, studentUserId) {
     );
 
     if (assignmentRes.rows.length === 0) {
-      // Check if assignment exists at all
       const checkAny = await client.query(`SELECT 1 FROM assessment_assignments WHERE id = $1 OR assessment_id = $1`, [assignmentOrAssessmentId]);
       if (checkAny.rows.length > 0) {
         throw new Error('UNAUTHORIZED_ACCESS');
@@ -41,7 +92,6 @@ async function startAttempt(assignmentOrAssessmentId, studentUserId) {
     const assignment = assignmentRes.rows[0];
     const assignmentId = assignment.id;
 
-    // Check expiration
     if (assignment.status === 'EXPIRED' || (assignment.due_at && new Date(assignment.due_at) < new Date())) {
       throw new Error('ASSIGNMENT_EXPIRED');
     }
@@ -56,10 +106,36 @@ async function startAttempt(assignmentOrAssessmentId, studentUserId) {
     );
     if (existingAttempt.rows.length > 0) {
       const existing = existingAttempt.rows[0];
+      const durationMinutes = parseInt(assignment.duration_minutes || 30, 10);
+      const startedAtMs = new Date(existing.started_at).getTime();
+      const expiresAtMs = startedAtMs + (durationMinutes * 60 * 1000);
+      const nowMs = Date.now();
+      const remainingSeconds = Math.max(0, Math.floor((expiresAtMs - nowMs) / 1000));
+
+      if (nowMs >= expiresAtMs && (existing.status === 'IN_PROGRESS' || existing.status === 'NOT_STARTED')) {
+        await client.query('COMMIT');
+        const autoSub = await submitAttempt(existing.id, studentUserId, 'AUTO_SUBMITTED');
+        return {
+          ...existing,
+          status: 'AUTO_SUBMITTED',
+          submitted_at: autoSub.result?.completed_at,
+          remaining_seconds: 0,
+          expires_at: new Date(expiresAtMs).toISOString(),
+          assessment: {
+            id: assignment.assessment_id,
+            title: assignment.title,
+            duration_minutes: assignment.duration_minutes,
+            total_marks: assignment.total_marks
+          }
+        };
+      }
+
       if (existing.status === 'IN_PROGRESS' || existing.status === 'NOT_STARTED') {
         await client.query('COMMIT');
         return {
           ...existing,
+          remaining_seconds: remainingSeconds,
+          expires_at: new Date(expiresAtMs).toISOString(),
           assessment: {
             id: assignment.assessment_id,
             title: assignment.title,
@@ -73,8 +149,8 @@ async function startAttempt(assignmentOrAssessmentId, studentUserId) {
 
     // Create attempt
     const attemptRes = await client.query(
-      `INSERT INTO attempts (assessment_id, student_id, assignment_id, status, total_marks)
-       VALUES ($1, $2, $3, 'IN_PROGRESS', $4)
+      `INSERT INTO attempts (assessment_id, student_id, assignment_id, status, total_marks, started_at)
+       VALUES ($1, $2, $3, 'IN_PROGRESS', $4, NOW())
        RETURNING *`,
       [assignment.assessment_id, studentId, assignmentId, assignment.total_marks]
     );
@@ -122,6 +198,10 @@ async function startAttempt(assignmentOrAssessmentId, studentUserId) {
 
     await client.query('COMMIT');
 
+    const durationMinutes = parseInt(assignment.duration_minutes || 30, 10);
+    const startedAtMs = new Date(attempt.started_at).getTime();
+    const expiresAtMs = startedAtMs + (durationMinutes * 60 * 1000);
+
     // Notify connected Live Monitoring dashboards
     emitToAdmin('student_started', {
       attemptId: attempt.id,
@@ -135,6 +215,8 @@ async function startAttempt(assignmentOrAssessmentId, studentUserId) {
 
     return {
       ...attempt,
+      remaining_seconds: durationMinutes * 60,
+      expires_at: new Date(expiresAtMs).toISOString(),
       assessment: {
         id: assignment.assessment_id,
         title: assignment.title,
@@ -151,6 +233,11 @@ async function startAttempt(assignmentOrAssessmentId, studentUserId) {
 }
 
 async function getAttemptQuestions(attemptId, studentUserId) {
+  const statusInfo = await checkAndHandleExpiration(attemptId, studentUserId);
+  if (statusInfo.isExpired || (statusInfo.status !== 'IN_PROGRESS' && statusInfo.status !== 'NOT_STARTED')) {
+    throw new Error('ATTEMPT_EXPIRED');
+  }
+
   // Resolve studentId
   const studentRes = await pool.query(`SELECT id FROM students WHERE user_id = $1`, [studentUserId]);
   if (studentRes.rows.length === 0) throw new Error('STUDENT_NOT_FOUND');
@@ -182,6 +269,11 @@ async function getAttemptQuestions(attemptId, studentUserId) {
 }
 
 async function saveAnswer(attemptId, questionId, selectedOption, studentUserId) {
+  const statusInfo = await checkAndHandleExpiration(attemptId, studentUserId);
+  if (statusInfo.isExpired || statusInfo.status !== 'IN_PROGRESS') {
+    throw new Error('ATTEMPT_EXPIRED');
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -250,7 +342,7 @@ async function saveAnswer(attemptId, questionId, selectedOption, studentUserId) 
   }
 }
 
-async function submitAttempt(attemptId, studentUserId) {
+async function submitAttempt(attemptId, studentUserId, targetStatus = 'SUBMITTED') {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -261,16 +353,27 @@ async function submitAttempt(attemptId, studentUserId) {
     const student = studentRes.rows[0];
     const studentId = student.id;
 
-    // Validate attempt
+    // Validate attempt with lock
     const attemptRes = await client.query(
-      `SELECT student_id, status, assignment_id, assessment_id, total_marks FROM attempts WHERE id = $1 FOR UPDATE`,
+      `SELECT student_id, status, assignment_id, assessment_id, total_marks, score FROM attempts WHERE id = $1 FOR UPDATE`,
       [attemptId]
     );
     if (attemptRes.rows.length === 0) throw new Error('ATTEMPT_NOT_FOUND');
     const attempt = attemptRes.rows[0];
 
     if (attempt.student_id !== studentId) throw new Error('UNAUTHORIZED_ACCESS');
-    if (attempt.status !== 'IN_PROGRESS') throw new Error('ATTEMPT_ALREADY_SUBMITTED');
+
+    // IDEMPOTENCY: If already submitted/auto_submitted, return existing result without error
+    if (attempt.status === 'SUBMITTED' || attempt.status === 'AUTO_SUBMITTED') {
+      const existingResultRes = await client.query(`SELECT * FROM results WHERE attempt_id = $1`, [attemptId]);
+      await client.query('COMMIT');
+      return {
+        id: attemptId,
+        status: attempt.status,
+        score: attempt.score,
+        result: existingResultRes.rows[0] || null
+      };
+    }
 
     // Get total number of questions for this attempt
     const aqRes = await client.query(
@@ -292,15 +395,17 @@ async function submitAttempt(attemptId, studentUserId) {
     const correctAnswers = parseInt(stats.correct_answers, 10);
     const wrongAnswers = parseInt(stats.wrong_answers, 10);
     const score = parseFloat(stats.score);
-    const unanswered = totalQs - (correctAnswers + wrongAnswers);
+    const unanswered = Math.max(0, totalQs - (correctAnswers + wrongAnswers));
     const percentage = attempt.total_marks > 0 ? (score / attempt.total_marks) * 100 : 0;
+
+    const finalStatus = targetStatus === 'AUTO_SUBMITTED' ? 'AUTO_SUBMITTED' : 'SUBMITTED';
 
     // Update attempt
     await client.query(
       `UPDATE attempts 
-       SET status = 'SUBMITTED', submitted_at = NOW(), score = $1 
-       WHERE id = $2`,
-      [score, attemptId]
+       SET status = $1, submitted_at = NOW(), score = $2 
+       WHERE id = $3`,
+      [finalStatus, score, attemptId]
     );
 
     // Update assignment
@@ -311,12 +416,21 @@ async function submitAttempt(attemptId, studentUserId) {
       );
     }
 
-    // Insert Result
+    // Insert or update Result
     const resultInsertRes = await client.query(
       `INSERT INTO results (
          attempt_id, student_id, assessment_id, score, total_marks, percentage, 
          correct_answers, wrong_answers, unanswered
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (attempt_id) DO UPDATE SET
+         score = EXCLUDED.score,
+         total_marks = EXCLUDED.total_marks,
+         percentage = EXCLUDED.percentage,
+         correct_answers = EXCLUDED.correct_answers,
+         wrong_answers = EXCLUDED.wrong_answers,
+         unanswered = EXCLUDED.unanswered,
+         completed_at = NOW()
+       RETURNING *`,
       [
         attemptId, studentId, attempt.assessment_id, score, attempt.total_marks, 
         percentage, correctAnswers, wrongAnswers, unanswered
@@ -327,14 +441,15 @@ async function submitAttempt(attemptId, studentUserId) {
       `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, metadata) VALUES ($1, $2, $3, $4, $5)`,
       [
         studentUserId,
-        'ATTEMPT_SUBMITTED',
+        finalStatus === 'AUTO_SUBMITTED' ? 'ATTEMPT_AUTO_SUBMITTED' : 'ATTEMPT_SUBMITTED',
         'attempt',
         attemptId,
         JSON.stringify({
           studentName: student.full_name,
           registerNumber: student.register_number,
           score,
-          percentage
+          percentage,
+          autoSubmitted: finalStatus === 'AUTO_SUBMITTED'
         })
       ]
     );
@@ -348,6 +463,7 @@ async function submitAttempt(attemptId, studentUserId) {
       studentName: student.full_name,
       score,
       percentage,
+      status: finalStatus,
       timestamp: new Date()
     });
 
@@ -359,7 +475,7 @@ async function submitAttempt(attemptId, studentUserId) {
 
     return { 
       id: attemptId, 
-      status: 'SUBMITTED', 
+      status: finalStatus, 
       score,
       result: resultInsertRes.rows[0]
     };
@@ -372,6 +488,11 @@ async function submitAttempt(attemptId, studentUserId) {
 }
 
 async function getAttempt(attemptId, studentUserId) {
+  const statusInfo = await checkAndHandleExpiration(attemptId, studentUserId);
+  if (statusInfo.isExpired) {
+    throw new Error('ATTEMPT_EXPIRED');
+  }
+
   const studentRes = await pool.query(`SELECT id FROM students WHERE user_id = $1`, [studentUserId]);
   if (studentRes.rows.length === 0) throw new Error('STUDENT_NOT_FOUND');
   const studentId = studentRes.rows[0].id;
@@ -390,25 +511,17 @@ async function getAttempt(attemptId, studentUserId) {
   const questions = await getAttemptQuestions(attemptId, studentUserId);
 
   return {
-    attempt,
+    attempt: {
+      ...attempt,
+      remaining_seconds: statusInfo.remainingSeconds,
+      expires_at: statusInfo.expiresAt
+    },
     questions
   };
 }
 
 async function getAttemptStatus(attemptId, studentUserId) {
-  const studentRes = await pool.query(`SELECT id FROM students WHERE user_id = $1`, [studentUserId]);
-  if (studentRes.rows.length === 0) throw new Error('STUDENT_NOT_FOUND');
-  const studentId = studentRes.rows[0].id;
-
-  const attemptRes = await pool.query(
-    `SELECT id, status, started_at, submitted_at, total_marks, score FROM attempts WHERE id = $1`,
-    [attemptId]
-  );
-  if (attemptRes.rows.length === 0) throw new Error('ATTEMPT_NOT_FOUND');
-  const attempt = attemptRes.rows[0];
-  if (attempt.student_id !== studentId) throw new Error('UNAUTHORIZED_ACCESS');
-
-  return attempt;
+  return await checkAndHandleExpiration(attemptId, studentUserId);
 }
 
 module.exports = {
@@ -417,5 +530,7 @@ module.exports = {
   getAttemptQuestions,
   getAttemptStatus,
   saveAnswer,
-  submitAttempt
+  submitAttempt,
+  checkAndHandleExpiration
 };
+

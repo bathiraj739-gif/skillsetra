@@ -52,12 +52,22 @@ export const attemptService = {
       assessmentId: data.assessment_id || data.assessmentId,
       started_at: data.started_at,
       startedAt: data.started_at,
+      expires_at: data.expires_at || data.expiresAt,
+      expiresAt: data.expires_at || data.expiresAt,
+      remaining_seconds: data.remaining_seconds != null ? data.remaining_seconds : data.remainingSeconds,
+      remainingSeconds: data.remaining_seconds != null ? data.remaining_seconds : data.remainingSeconds,
       status: (data.status || 'in_progress').toLowerCase(),
       assessment: data.assessment,
       questions: questions,
       saved_answers: savedAnswers,
     }
   },
+
+  async getAttemptStatus(attemptId: string): Promise<any> {
+    const res: any = await api.get(`/student/attempts/${attemptId}/status`)
+    return res?.data?.data || res?.data || res
+  },
+
 
   async getAttempt(attemptId: string) {
     const questionsRes: any = await api.get(`/student/attempts/${attemptId}/questions`);

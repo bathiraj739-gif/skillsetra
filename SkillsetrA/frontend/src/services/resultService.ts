@@ -58,8 +58,10 @@ function formatResult(r: any): Result {
       register_number: r.student?.register_number || r.student?.registerNumber || r.register_number || 'N/A',
       department: r.student?.department || r.department || '',
     } as any,
+    answer_report: Array.isArray(r.answer_report) ? r.answer_report : (Array.isArray(r.answerReport) ? r.answerReport : undefined),
   }
 }
+
 
 export const resultService = {
   async getAllResults(): Promise<Result[]> {

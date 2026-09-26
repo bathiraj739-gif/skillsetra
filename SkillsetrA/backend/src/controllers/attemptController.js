@@ -30,6 +30,7 @@ async function getAttemptQuestions(req, res, next) {
       const questions = await attemptService.getAttemptQuestions(req.params.id, req.user.userId);
       return res.status(200).json({ success: true, message: 'Questions fetched successfully', data: questions });
     } catch (err) {
+      if (err.message === 'ATTEMPT_EXPIRED') return res.status(400).json({ success: false, message: 'Time expired. Assessment has been automatically submitted.' });
       if (err.message === 'ATTEMPT_NOT_FOUND') return res.status(404).json({ success: false, message: 'Attempt not found' });
       if (err.message === 'UNAUTHORIZED_ACCESS') return res.status(403).json({ success: false, message: 'Unauthorized access to attempt' });
       throw err;
@@ -53,6 +54,7 @@ async function saveAnswer(req, res, next) {
       await attemptService.saveAnswer(req.params.id, questionId, selectedOption, req.user.userId);
       return res.status(200).json({ success: true, message: 'Answer saved successfully' });
     } catch (err) {
+      if (err.message === 'ATTEMPT_EXPIRED') return res.status(400).json({ success: false, message: 'Time expired. Assessment has been automatically submitted.' });
       if (err.message === 'ATTEMPT_NOT_FOUND') return res.status(404).json({ success: false, message: 'Attempt not found' });
       if (err.message === 'UNAUTHORIZED_ACCESS') return res.status(403).json({ success: false, message: 'Unauthorized access to attempt' });
       if (err.message === 'ATTEMPT_NOT_IN_PROGRESS') return res.status(400).json({ success: false, message: 'Attempt is not in progress' });
@@ -86,6 +88,7 @@ async function getAttempt(req, res, next) {
       const data = await attemptService.getAttempt(req.params.id, req.user.userId);
       return res.status(200).json({ success: true, message: 'Attempt fetched successfully', data });
     } catch (err) {
+      if (err.message === 'ATTEMPT_EXPIRED') return res.status(400).json({ success: false, message: 'Time expired. Assessment has been automatically submitted.' });
       if (err.message === 'ATTEMPT_NOT_FOUND') return res.status(404).json({ success: false, message: 'Attempt not found' });
       if (err.message === 'UNAUTHORIZED_ACCESS') return res.status(403).json({ success: false, message: 'Unauthorized access to attempt' });
       throw err;
@@ -109,6 +112,7 @@ async function getAttemptStatus(req, res, next) {
     next(err);
   }
 }
+
 
 module.exports = {
   startAttempt,

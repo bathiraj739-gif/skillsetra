@@ -1,17 +1,19 @@
 const authService = require('../services/authService');
+const emailService = require('../services/emailService');
 
 async function adminLogin(req, res, next) {
   try {
-    const { username, password } = req.body;
+    const { username, email, password } = req.body;
+    const loginIdentifier = username || email;
     
-    if (!username || !password) {
+    if (!loginIdentifier || !password) {
       return res.status(400).json({
         success: false,
         message: 'Username and password are required'
       });
     }
 
-    const result = await authService.adminLogin(username, password);
+    const result = await authService.adminLogin(loginIdentifier, password);
     
     if (!result) {
       return res.status(401).json({
@@ -23,7 +25,9 @@ async function adminLogin(req, res, next) {
     return res.status(200).json({
       success: true,
       message: 'Admin login successful',
-      data: result
+      data: result,
+      token: result.token,
+      user: result.user
     });
   } catch (err) {
     next(err);
@@ -32,16 +36,17 @@ async function adminLogin(req, res, next) {
 
 async function studentLogin(req, res, next) {
   try {
-    const { username, password } = req.body;
+    const { username, registerNumber, password } = req.body;
+    const loginIdentifier = username || registerNumber;
     
-    if (!username || !password) {
+    if (!loginIdentifier || !password) {
       return res.status(400).json({
         success: false,
         message: 'Username and password are required'
       });
     }
 
-    const result = await authService.studentLogin(username, password);
+    const result = await authService.studentLogin(loginIdentifier, password);
     
     if (!result) {
       return res.status(401).json({
@@ -50,10 +55,24 @@ async function studentLogin(req, res, next) {
       });
     }
     
+    // Trigger login success email asynchronously (non-blocking)
+    if (result.student && result.student.email) {
+      emailService.sendLoginSuccessEmail({
+        to: result.student.email,
+        studentName: result.student.full_name,
+        registerNumber: result.student.register_number,
+        timestamp: new Date().toLocaleString()
+      }).catch(err => {
+        console.error('[LOGIN EMAIL ERROR]', err.message || err);
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Student login successful',
-      data: result
+      data: result,
+      token: result.token,
+      user: result.user
     });
   } catch (err) {
     next(err);
@@ -72,9 +91,12 @@ async function getMe(req, res, next) {
       });
     }
     
+    const userData = result.user || result;
     return res.status(200).json({
       success: true,
-      data: result
+      data: userData,
+      user: userData,
+      student: result.student || null
     });
   } catch (err) {
     next(err);

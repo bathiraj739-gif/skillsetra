@@ -1,26 +1,33 @@
 const pool = require('../config/db');
+const emailService = require('./emailService');
 
 async function createAssignments(data, adminUserId) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const { assessmentId, studentIds, dueAt } = data;
+    const rawStudentIds = data.studentIds || (data.studentId ? [data.studentId] : []);
+    const studentIds = Array.isArray(rawStudentIds) ? rawStudentIds : [rawStudentIds];
+    const { assessmentId, dueAt } = data;
     if (!assessmentId) throw new Error('ASSESSMENT_REQUIRED');
-    if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+    if (!studentIds || studentIds.length === 0) {
       throw new Error('STUDENTS_REQUIRED');
     }
 
     // Validate assessment
-    const assRes = await client.query(`SELECT id, status, duration_minutes, total_marks FROM assessments WHERE id = $1`, [assessmentId]);
+    const assRes = await client.query(`SELECT id, status, duration_minutes, total_marks, COALESCE(assessment_mode, 'STANDARD') as assessment_mode FROM assessments WHERE id = $1`, [assessmentId]);
     if (assRes.rows.length === 0) throw new Error('ASSESSMENT_NOT_FOUND');
     const assessment = assRes.rows[0];
 
-    if (assessment.status === 'DRAFT') throw new Error('ASSESSMENT_IS_DRAFT');
-    if (assessment.status === 'CLOSED') throw new Error('ASSESSMENT_IS_CLOSED');
+    const currentStatus = String(assessment.status || '').toUpperCase();
+    if (currentStatus === 'DRAFT') throw new Error('ASSESSMENT_IS_DRAFT');
+    if (currentStatus === 'CLOSED') throw new Error('ASSESSMENT_IS_CLOSED');
     
+    const isAdaptive = assessment.assessment_mode === 'ADAPTIVE';
     const qCount = await client.query(`SELECT COUNT(*) FROM assessment_questions WHERE assessment_id = $1`, [assessmentId]);
-    if (parseInt(qCount.rows[0].count, 10) === 0 || assessment.duration_minutes <= 0 || assessment.total_marks <= 0) {
+    const count = parseInt(qCount.rows[0].count, 10);
+    
+    if ((!isAdaptive && count === 0) || assessment.duration_minutes <= 0 || (!isAdaptive && assessment.total_marks <= 0)) {
       throw new Error('ASSESSMENT_INVALID_CONFIG');
     }
 
@@ -61,6 +68,39 @@ async function createAssignments(data, adminUserId) {
     }
 
     await client.query('COMMIT');
+
+    // Send assignment assigned emails asynchronously post-commit (non-blocking)
+    if (createdAssignments.length > 0) {
+      (async () => {
+        try {
+          const assignmentIds = createdAssignments.map(a => a.id);
+          const studentInfoRes = await pool.query(
+            `SELECT s.id, s.full_name, s.email, s.register_number, a.title as assessment_title, a.duration_minutes, aa.id as assignment_id, aa.assigned_at
+             FROM assessment_assignments aa
+             JOIN students s ON aa.student_id = s.id
+             JOIN assessments a ON aa.assessment_id = a.id
+             WHERE aa.id = ANY($1::uuid[])`,
+            [assignmentIds]
+          );
+
+          for (const row of studentInfoRes.rows) {
+            if (row.email) {
+              await emailService.sendAssignmentAssignedEmail({
+                to: row.email,
+                studentName: row.full_name,
+                assessmentTitle: row.assessment_title,
+                durationMinutes: row.duration_minutes,
+                assignedAt: new Date(row.assigned_at).toLocaleString(),
+                assignmentId: row.assignment_id
+              }).catch(e => console.error('[ASSIGNMENT ASSIGNED EMAIL ERROR]', e.message || e));
+            }
+          }
+        } catch (emailErr) {
+          console.error('[ASSIGNMENT ASSIGNED EMAILS EXCEPTION]', emailErr.message || emailErr);
+        }
+      })();
+    }
+
     return {
       assigned: createdAssignments,
       alreadyAssigned: existingStudentIds
@@ -352,6 +392,34 @@ async function getStudentAssignmentById(assignmentId, studentUserId) {
 
   if (assignment.student_id !== studentId) {
     throw new Error('UNAUTHORIZED_ACCESS');
+  }
+
+  // Idempotent first-view notification: Check if viewed email was already sent
+  try {
+    const viewedLog = await pool.query(
+      `SELECT 1 FROM activity_logs WHERE user_id = $1 AND action = 'ASSIGNMENT_VIEWED' AND entity_id = $2 LIMIT 1`,
+      [studentUserId, assignment.id]
+    );
+
+    if (viewedLog.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, metadata) 
+         VALUES ($1, 'ASSIGNMENT_VIEWED', 'assessment_assignment', $2, $3)`,
+        [studentUserId, assignment.id, JSON.stringify({ title: assignment.title, viewedAt: new Date() })]
+      );
+
+      const stuRes = await pool.query(`SELECT full_name, email FROM students WHERE id = $1`, [studentId]);
+      if (stuRes.rows.length > 0 && stuRes.rows[0].email) {
+        emailService.sendAssignmentViewedEmail({
+          to: stuRes.rows[0].email,
+          studentName: stuRes.rows[0].full_name,
+          assessmentTitle: assignment.title,
+          status: assignment.status
+        }).catch(e => console.error('[ASSIGNMENT VIEWED EMAIL ERROR]', e.message || e));
+      }
+    }
+  } catch (viewErr) {
+    console.error('[ASSIGNMENT VIEWED EVENT ERROR]', viewErr.message || viewErr);
   }
 
   return {

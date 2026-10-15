@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Logo } from '../components/common/Logo'
+import { SkillAIFloatingAgent } from '../components/admin/SkillAIFloatingAgent'
 import {
   LayoutDashboard,
   Users,
@@ -26,6 +27,35 @@ export const AdminLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [questionSubmenuOpen, setQuestionSubmenuOpen] = useState(true)
 
+  // Skill AI Agent Split-Panel Open State
+  const [isAgentOpen, setIsAgentOpen] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('skillAI.isOpen')
+      return saved !== null ? JSON.parse(saved) : true
+    } catch {
+      return true
+    }
+  })
+
+
+  const closeAgent = () => {
+    setIsAgentOpen(false)
+    try {
+      localStorage.setItem('skillAI.isOpen', JSON.stringify(false))
+    } catch {
+      // ignore
+    }
+  }
+
+  const openAgent = () => {
+    setIsAgentOpen(true)
+    try {
+      localStorage.setItem('skillAI.isOpen', JSON.stringify(true))
+    } catch {
+      // ignore
+    }
+  }
+
   const handleLogout = async () => {
     await signOut()
     navigate('/admin/login')
@@ -48,7 +78,7 @@ export const AdminLayout: React.FC = () => {
 
       {/* Admin Sidebar */}
       <aside
-        className={`fixed md:static inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-300 transform ${
+        className={`fixed md:sticky md:top-0 inset-y-0 left-0 z-40 w-64 md:h-screen shrink-0 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-300 transform ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
@@ -231,11 +261,18 @@ export const AdminLayout: React.FC = () => {
       </aside>
 
       {/* Main Admin Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+      <div className="flex-1 flex flex-col min-w-0 transition-all duration-200">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto relative">
           <Outlet />
         </main>
       </div>
+
+      {/* Global Responsive Split-Panel Skill AI Agent */}
+      <SkillAIFloatingAgent
+        isOpen={isAgentOpen}
+        onOpen={openAgent}
+        onClose={closeAgent}
+      />
     </div>
   )
 }

@@ -59,7 +59,9 @@ async function getQuestions(req, res, next) {
     const result = await questionService.getQuestions(req.query);
     return res.status(200).json({
       success: true,
-      data: result
+      data: result.questions,
+      questions: result.questions,
+      pagination: result.pagination
     });
   } catch (err) {
     next(err);

@@ -248,6 +248,69 @@ export const ExamInterface: React.FC = () => {
   const answeredCount = Object.keys(answers).length
   const unansweredCount = totalQuestions - answeredCount
   const reviewCount = Object.values(markedForReview).filter(Boolean).length
+  const isAdaptive = 
+    attemptData?.assessment_mode === 'ADAPTIVE' || 
+    attemptData?.assessment?.assessment_mode === 'ADAPTIVE'
+
+  const [fetchingNext, setFetchingNext] = useState(false)
+
+  const handleNext = async () => {
+    const totalQ = attemptData?.questions?.length || 0
+    if (currentIndex < totalQ - 1) {
+      setCurrentIndex((prev) => prev + 1)
+      return
+    }
+
+    if (isAdaptive) {
+      const attId = attemptData?.attempt_id || attemptData?.id
+      if (!attId || fetchingNext) return
+
+      setFetchingNext(true)
+      try {
+        const nextData = await attemptService.getNextAdaptiveQuestion(attId)
+        if (nextData.completed || nextData.max_reached || nextData.pool_exhausted) {
+          setShowSubmitModal(true)
+        } else if (nextData.question) {
+          const newQ: ExamQuestion = {
+            id: nextData.question.id,
+            question_text: nextData.question.question_text,
+            section: (nextData.question.category || nextData.question.section || 'aptitude').toLowerCase() as any,
+            option_a: nextData.question.option_a,
+            option_b: nextData.question.option_b,
+            option_c: nextData.question.option_c,
+            option_d: nextData.question.option_d,
+            marks: nextData.question.marks || 1,
+            difficulty: (nextData.question.difficulty || 'medium').toLowerCase() as any,
+            order: nextData.question.question_order || totalQ + 1,
+          }
+
+          setAttemptData((prev) => {
+            if (!prev) return prev
+            const prevQs = prev.questions || []
+            if (prevQs.some((q) => q.id === newQ.id)) {
+              return prev
+            }
+            return {
+              ...prev,
+              questions: [...prevQs, newQ],
+            }
+          })
+          setCurrentIndex(totalQ)
+        }
+      } catch (err: any) {
+        console.error('Failed to get next adaptive question:', err)
+        if (err?.message?.includes('Time expired') || err?.response?.data?.message?.includes('expired')) {
+          handleFinalSubmit(true)
+        } else {
+          setShowSubmitModal(true)
+        }
+      } finally {
+        setFetchingNext(false)
+      }
+    } else {
+      setShowSubmitModal(true)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col select-none">
@@ -261,7 +324,9 @@ export const ExamInterface: React.FC = () => {
               <h1 className="font-bold text-sm sm:text-base text-white truncate max-w-xs sm:max-w-md">
                 {attemptData.assessmentTitle || attemptData.assessment?.title || 'Placement Assessment'}
               </h1>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Proctored Assessment</span>
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                {isAdaptive ? '⚡ Proctored Adaptive Assessment' : 'Proctored Assessment'}
+              </span>
             </div>
           </div>
 
@@ -390,14 +455,50 @@ export const ExamInterface: React.FC = () => {
                 Previous
               </button>
 
-              <button
-                disabled={currentIndex === totalQuestions - 1}
-                onClick={() => setCurrentIndex((prev) => Math.min(totalQuestions - 1, prev + 1))}
-                className="inline-flex items-center gap-1 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-500 disabled:opacity-40 transition-all cursor-pointer"
-              >
-                Next
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              {currentIndex < totalQuestions - 1 ? (
+                <button
+                  onClick={handleNext}
+                  className="inline-flex items-center gap-1 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-500 transition-all cursor-pointer"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : isAdaptive ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={fetchingNext}
+                    onClick={handleNext}
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {fetchingNext ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Selecting Next...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Next Question</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setShowSubmitModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500 shadow-md transition-all cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Finish</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowSubmitModal(true)}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500 shadow-md transition-all cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Finish</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

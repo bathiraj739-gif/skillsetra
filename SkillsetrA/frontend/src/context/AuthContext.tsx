@@ -47,13 +47,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         const profileObj: Profile = {
           id: u.studentId || u.id || u.userId || '',
-          name: u.name || u.username || u.email || 'User',
+          name: u.name || u.full_name || u.username || u.email || 'User',
           username: u.username || u.email?.split('@')[0],
           email: u.email || '',
           role: roleLower,
-          register_number: u.registerNumber,
+          register_number: u.registerNumber || u.register_number,
           department: u.department,
-          year_of_study: u.yearOfStudy,
+          year: typeof u.year === 'number' ? u.year : (parseInt(String(u.year || u.yearOfStudy), 10) || 3),
+          year_of_study: u.yearOfStudy || u.year,
+          section: u.section,
+          phone: u.phone,
         }
         setUser(userObj)
         setProfile(profileObj)

@@ -7,6 +7,7 @@ const { requireAdmin } = require('../middleware/adminMiddleware');
 // All dashboard routes require Admin authentication
 router.use(authenticateToken, requireAdmin);
 
+router.get('/admin/stats', dashboardController.getDashboardOverview);
 router.get('/admin/dashboard/overview', dashboardController.getDashboardOverview);
 router.get('/admin/dashboard/activity', dashboardController.getRecentActivity);
 router.get('/admin/activities', dashboardController.getRecentActivity);

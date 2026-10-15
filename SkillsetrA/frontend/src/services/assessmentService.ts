@@ -11,6 +11,10 @@ export const assessmentService = {
       duration_minutes: a.duration_minutes || a.durationMinutes || 30,
       passing_percentage: a.passing_percentage || 50,
       status: a.status,
+      assessment_mode: a.assessment_mode || 'STANDARD',
+      starting_difficulty: a.starting_difficulty || 'MEDIUM',
+      min_questions: a.min_questions != null ? Number(a.min_questions) : 20,
+      max_questions: a.max_questions != null ? Number(a.max_questions) : 30,
       aptitude_count: a.aptitude_count != null ? Number(a.aptitude_count) : (a.aptitudeCount != null ? Number(a.aptitudeCount) : 0),
       verbal_count: a.verbal_count != null ? Number(a.verbal_count) : (a.verbalCount != null ? Number(a.verbalCount) : 0),
       created_at: a.created_at,
@@ -29,6 +33,10 @@ export const assessmentService = {
         duration_minutes: a.duration_minutes || a.durationMinutes || 30,
         passing_percentage: a.passing_percentage || 50,
         status: a.status,
+        assessment_mode: a.assessment_mode || 'STANDARD',
+        starting_difficulty: a.starting_difficulty || 'MEDIUM',
+        min_questions: a.min_questions != null ? Number(a.min_questions) : 20,
+        max_questions: a.max_questions != null ? Number(a.max_questions) : 30,
         aptitude_count: a.aptitude_count != null ? Number(a.aptitude_count) : (a.aptitudeCount != null ? Number(a.aptitudeCount) : 0),
         verbal_count: a.verbal_count != null ? Number(a.verbal_count) : (a.verbalCount != null ? Number(a.verbalCount) : 0),
         created_at: a.created_at,
@@ -49,6 +57,10 @@ export const assessmentService = {
       duration_minutes: a.duration_minutes,
       passing_percentage: a.passing_percentage,
       status: a.status,
+      assessment_mode: a.assessment_mode || 'STANDARD',
+      starting_difficulty: a.starting_difficulty || 'MEDIUM',
+      min_questions: a.min_questions != null ? Number(a.min_questions) : 20,
+      max_questions: a.max_questions != null ? Number(a.max_questions) : 30,
       aptitude_count: a.aptitude_count != null ? Number(a.aptitude_count) : 0,
       verbal_count: a.verbal_count != null ? Number(a.verbal_count) : 0,
       created_at: a.created_at,
@@ -66,6 +78,10 @@ export const assessmentService = {
       duration_minutes: a.duration_minutes,
       passing_percentage: a.passing_percentage,
       status: a.status,
+      assessment_mode: a.assessment_mode || 'STANDARD',
+      starting_difficulty: a.starting_difficulty || 'MEDIUM',
+      min_questions: a.min_questions != null ? Number(a.min_questions) : 20,
+      max_questions: a.max_questions != null ? Number(a.max_questions) : 30,
       aptitude_count: a.aptitude_count != null ? Number(a.aptitude_count) : 0,
       verbal_count: a.verbal_count != null ? Number(a.verbal_count) : 0,
       created_at: a.created_at,
@@ -120,6 +136,10 @@ export const assessmentService = {
       duration_minutes: number
       passing_percentage?: number
       status?: any
+      assessment_mode?: 'STANDARD' | 'ADAPTIVE'
+      starting_difficulty?: 'EASY' | 'MEDIUM' | 'HARD'
+      min_questions?: number
+      max_questions?: number
     },
     questionIds: string[]
   ): Promise<Assessment> {
@@ -130,6 +150,10 @@ export const assessmentService = {
       duration_minutes: Number(assessmentData.duration_minutes),
       passing_percentage: assessmentData.passing_percentage,
       status: (assessmentData.status || 'DRAFT').toUpperCase(),
+      assessment_mode: assessmentData.assessment_mode || 'STANDARD',
+      starting_difficulty: assessmentData.starting_difficulty || 'MEDIUM',
+      min_questions: assessmentData.min_questions != null ? Number(assessmentData.min_questions) : 20,
+      max_questions: assessmentData.max_questions != null ? Number(assessmentData.max_questions) : 30,
       questionIds,
     }
 

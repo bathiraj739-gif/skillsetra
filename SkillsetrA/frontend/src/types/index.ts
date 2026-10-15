@@ -10,6 +10,8 @@ export interface Profile {
   department?: string
   year?: number
   year_of_study?: string
+  section?: string
+  phone?: string
   role: UserRole
   created_at?: string
   updated_at?: string
@@ -49,6 +51,10 @@ export interface Assessment {
   end_time?: string
   passing_percentage: number
   status: AssessmentStatus
+  assessment_mode?: 'STANDARD' | 'ADAPTIVE'
+  starting_difficulty?: 'EASY' | 'MEDIUM' | 'HARD'
+  min_questions?: number
+  max_questions?: number
   created_by?: string
   created_at?: string
   updated_at?: string
@@ -110,11 +116,19 @@ export interface StartAttemptResponse {
   assessmentId?: string
   assessmentTitle?: string
   status?: AttemptStatus | any
+  assessment_mode?: 'STANDARD' | 'ADAPTIVE'
+  starting_difficulty?: 'EASY' | 'MEDIUM' | 'HARD'
+  min_questions?: number
+  max_questions?: number
   assessment?: {
     id: string
     title: string
     description?: string
     duration_minutes: number
+    assessment_mode?: 'STANDARD' | 'ADAPTIVE'
+    starting_difficulty?: 'EASY' | 'MEDIUM' | 'HARD'
+    min_questions?: number
+    max_questions?: number
   }
   started_at?: string
   startedAt?: string

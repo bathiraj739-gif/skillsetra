@@ -15,6 +15,10 @@ router.get('/:id/questions', attemptController.getAttemptQuestions);
 router.get('/:id/status', attemptController.getAttemptStatus);
 router.get('/:id/report', resultController.getStudentAttemptReport);
 router.post('/:id/answers', attemptController.saveAnswer);
+router.post('/:id/next-question', attemptController.getNextAdaptiveQuestion);
+router.post('/:id/adaptive-next', attemptController.getNextAdaptiveQuestion);
+router.get('/:id/next-question', attemptController.getNextAdaptiveQuestion);
+router.get('/:id/adaptive-next', attemptController.getNextAdaptiveQuestion);
 router.post('/:id/submit', attemptController.submitAttempt);
 
 module.exports = router;

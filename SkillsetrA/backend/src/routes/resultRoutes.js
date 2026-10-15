@@ -4,10 +4,11 @@ const resultController = require('../controllers/resultController');
 const { authenticateToken } = require('../middleware/authMiddleware');
 const { requireAdmin } = require('../middleware/adminMiddleware');
 
-// All result admin routes require Admin authentication
-router.use(authenticateToken, requireAdmin);
+// Student own results
+router.get('/my', authenticateToken, resultController.getStudentResults);
 
-router.get('/', resultController.getResults);
-router.get('/:id', resultController.getResultById);
+// All result admin routes require Admin authentication
+router.get('/', authenticateToken, requireAdmin, resultController.getResults);
+router.get('/:id', authenticateToken, requireAdmin, resultController.getResultById);
 
 module.exports = router;

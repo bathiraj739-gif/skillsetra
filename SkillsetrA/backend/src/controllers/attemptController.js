@@ -2,13 +2,13 @@ const attemptService = require('../services/attemptService');
 
 async function startAttempt(req, res, next) {
   try {
-    const { assignmentId } = req.body;
-    if (!assignmentId) {
-      return res.status(400).json({ success: false, message: 'assignmentId is required' });
+    const targetId = req.body.assignmentId || req.body.assessmentId || req.body.id;
+    if (!targetId) {
+      return res.status(400).json({ success: false, message: 'assignmentId or assessmentId is required' });
     }
 
     try {
-      const attempt = await attemptService.startAttempt(assignmentId, req.user.userId);
+      const attempt = await attemptService.startAttempt(targetId, req.user.userId);
       return res.status(201).json({ success: true, message: 'Attempt started successfully', data: attempt });
     } catch (err) {
       if (err.message === 'STUDENT_NOT_FOUND') return res.status(404).json({ success: false, message: 'Student not found' });
@@ -113,12 +113,30 @@ async function getAttemptStatus(req, res, next) {
   }
 }
 
+async function getNextAdaptiveQuestion(req, res, next) {
+  try {
+    try {
+      const data = await attemptService.getNextAdaptiveQuestion(req.params.id, req.user.userId);
+      return res.status(200).json({ success: true, message: 'Next adaptive question resolved', data });
+    } catch (err) {
+      if (err.message === 'ATTEMPT_EXPIRED') return res.status(400).json({ success: false, message: 'Time expired. Assessment has been automatically submitted.' });
+      if (err.message === 'ATTEMPT_NOT_FOUND') return res.status(404).json({ success: false, message: 'Attempt not found' });
+      if (err.message === 'UNAUTHORIZED_ACCESS') return res.status(403).json({ success: false, message: 'Unauthorized access to attempt' });
+      if (err.message === 'ATTEMPT_NOT_IN_PROGRESS') return res.status(400).json({ success: false, message: 'Attempt is not in progress' });
+      if (err.message === 'NOT_ADAPTIVE_ASSESSMENT') return res.status(400).json({ success: false, message: 'Assessment is not in adaptive mode' });
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+}
 
 module.exports = {
   startAttempt,
   getAttempt,
   getAttemptQuestions,
   getAttemptStatus,
+  getNextAdaptiveQuestion,
   saveAnswer,
   submitAttempt
 };

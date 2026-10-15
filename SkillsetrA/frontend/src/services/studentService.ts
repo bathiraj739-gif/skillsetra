@@ -134,7 +134,9 @@ export const studentService = {
       registerNumber: updates.register_number,
       department: updates.department,
       year: updates.year,
-      yearOfStudy: updates.year_of_study || `${updates.year || 4}th Year`,
+      yearOfStudy: updates.year_of_study || (updates.year ? `${updates.year}th Year` : undefined),
+      section: updates.section,
+      phone: updates.phone,
     })
     const s = res?.data?.student || res?.student || res?.data || res
     return {
@@ -144,8 +146,10 @@ export const studentService = {
       email: s.email,
       register_number: s.register_number || s.registerNumber,
       department: s.department,
-      year: parseInt(s.year || s.yearOfStudy) || 4,
-      year_of_study: s.year || s.yearOfStudy || '4th Year',
+      year: parseInt(s.year || s.yearOfStudy) || (typeof s.year === 'number' ? s.year : 4),
+      year_of_study: s.year || s.yearOfStudy || `${s.year || 4}th Year`,
+      section: s.section,
+      phone: s.phone,
       role: 'student',
     }
   },
@@ -160,5 +164,69 @@ export const studentService = {
 
   async deleteStudentProfile(id: string): Promise<void> {
     return this.deleteStudent(id)
+  },
+
+  async bulkValidateCandidates(candidates: any[]): Promise<{
+    totalRows: number
+    validCount: number
+    invalidCount: number
+    alreadyRegisteredCount: number
+    rows: Array<{
+      rowNumber: number
+      status: 'valid' | 'invalid' | 'already_registered'
+      errors: string[]
+      candidate: {
+        register_number: string
+        full_name: string
+        username: string
+        email?: string | null
+        department?: string | null
+        year?: string | null
+        section?: string | null
+        phone?: string | null
+      }
+    }>
+  }> {
+    const res: any = await api.post('/students/bulk-validate', { candidates })
+    return res?.data || res
+  },
+
+  async bulkImportCandidates(candidates: any[], initialPassword: string): Promise<{
+    registeredCount: number
+    skippedCount: number
+    errors: any[]
+    emails?: {
+      totalSent: number
+      totalFailed: number
+    }
+  }> {
+    const res: any = await api.post('/students/bulk-import', { candidates, initialPassword })
+    return res?.data || res
+  },
+
+  async sendWelcomeEmail(studentId: string, initialPassword?: string): Promise<{
+    success: boolean
+    message: string
+    data?: {
+      sent: boolean
+      simulated?: boolean
+      messageId?: string
+      recipient?: string
+    }
+  }> {
+    const res: any = await api.post(`/students/${studentId}/send-welcome-email`, { initialPassword })
+    return res
+  },
+
+  async sendTestEmail(to: string): Promise<{
+    success: boolean
+    message: string
+    data?: {
+      recipient: string
+      messageId?: string
+    }
+  }> {
+    const res: any = await api.post('/students/email/test', { to })
+    return res
   },
 }

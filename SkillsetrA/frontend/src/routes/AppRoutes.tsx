@@ -90,6 +90,7 @@ export const AppRoutes: React.FC = () => {
         <Route element={<RoleProtectedRoute allowedRole="admin" redirectPath="/admin/login" />}>
           <Route element={<AdminLayout />}>
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/agent" element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="/admin/students" element={<StudentManagement />} />
             <Route path="/admin/questions" element={<QuestionBank />} />
             <Route path="/admin/questions/aptitude" element={<QuestionBank />} />

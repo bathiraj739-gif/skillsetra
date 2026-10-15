@@ -128,6 +128,11 @@ export const attemptService = {
     })
   },
 
+  async getNextAdaptiveQuestion(attemptId: string): Promise<any> {
+    const res: any = await api.post(`/student/attempts/${attemptId}/next-question`)
+    return res?.data?.data || res?.data || res
+  },
+
   async submitAttempt(attemptId: string): Promise<any> {
     const res: any = await api.post(`/student/attempts/${attemptId}/submit`)
     return res?.data?.result || res?.data || res;

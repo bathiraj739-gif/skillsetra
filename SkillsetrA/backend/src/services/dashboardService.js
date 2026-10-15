@@ -122,8 +122,8 @@ async function getDashboardOverview(assessmentId = null) {
   }
 }
 
-async function getRecentActivity(assessmentId = null, limit = 50) {
-  const parsedLimit = Math.min(parseInt(limit, 10) || 50, 100);
+async function getRecentActivity(assessmentId = null, limit = 5000) {
+  const parsedLimit = Math.min(parseInt(limit, 10) || 5000, 5000);
   let queryParams = [parsedLimit];
   let joinAssessment = '';
   let whereClause = '';
@@ -242,7 +242,7 @@ async function getLiveMonitoringFeed() {
     };
   });
 
-  const activities = await getRecentActivity(null, 50);
+  const activities = await getRecentActivity(null, 5000);
 
   const summaryRes = await pool.query(`
     SELECT 

@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const { generateToken } = require('../utils/jwt');
+const emailService = require('./emailService');
 
 const SALT_ROUNDS = 12;
 
@@ -118,7 +119,7 @@ async function getUserById(userId) {
     };
   } else if (user.role === 'student') {
     const studentResult = await pool.query(
-      `SELECT id, register_number, full_name, email, department, year, section FROM students WHERE user_id = $1`,
+      `SELECT id, register_number, full_name, email, department, year, section, phone FROM students WHERE user_id = $1`,
       [user.id]
     );
     const student = studentResult.rows[0];
@@ -126,7 +127,19 @@ async function getUserById(userId) {
       user: {
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        studentId: student?.id,
+        name: student?.full_name,
+        fullName: student?.full_name,
+        full_name: student?.full_name,
+        email: student?.email,
+        registerNumber: student?.register_number,
+        register_number: student?.register_number,
+        department: student?.department,
+        year: student?.year,
+        yearOfStudy: student?.year,
+        section: student?.section,
+        phone: student?.phone
       },
       student: student ? {
         id: student.id,
@@ -135,7 +148,8 @@ async function getUserById(userId) {
         email: student.email,
         department: student.department,
         year: student.year,
-        section: student.section
+        section: student.section,
+        phone: student.phone
       } : null
     };
   }
@@ -180,8 +194,8 @@ async function createStudentAccount(studentData) {
     
     // Insert into students
     const studentInsert = await client.query(
-      `INSERT INTO students (user_id, register_number, full_name, email, department, year, section)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, register_number, full_name, email, department, year, section`,
+      `INSERT INTO students (user_id, register_number, full_name, email, department, year, section, phone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, register_number, full_name, email, department, year, section, phone`,
       [
         user.id, 
         studentData.register_number, 
@@ -189,7 +203,8 @@ async function createStudentAccount(studentData) {
         studentData.email || null, 
         studentData.department || null, 
         studentData.year || null, 
-        studentData.section || null
+        studentData.section || null,
+        studentData.phone || null
       ]
     );
     const student = studentInsert.rows[0];
@@ -233,6 +248,25 @@ async function changePassword(userId, oldPassword, newPassword) {
 
   const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
   await pool.query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`, [newHash, userId]);
+
+  // Send password changed notification email if student has email
+  try {
+    const studentRes = await pool.query(
+      `SELECT full_name, email FROM students WHERE user_id = $1`,
+      [userId]
+    );
+    if (studentRes.rows.length > 0 && studentRes.rows[0].email) {
+      emailService.sendPasswordChangedEmail({
+        to: studentRes.rows[0].email,
+        studentName: studentRes.rows[0].full_name,
+        timestamp: new Date().toLocaleString()
+      }).catch(e => {
+        console.error('[PASSWORD EMAIL ERROR]', e.message || e);
+      });
+    }
+  } catch (emailQueryErr) {
+    console.error('[PASSWORD EMAIL QUERY ERROR]', emailQueryErr.message || emailQueryErr);
+  }
 
   try {
     await pool.query(

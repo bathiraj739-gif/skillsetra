@@ -14,11 +14,16 @@ import {
   Save,
   AlertCircle,
   FileText,
+  Sparkles,
 } from 'lucide-react'
 import { QuestionImportModal } from '../../components/admin/QuestionBank/QuestionImportModal'
+import { AIQuestionGeneratorModal } from '../../components/admin/QuestionBank/AIQuestionGeneratorModal'
+import { QuestionQualityView } from '../../components/admin/QuestionBank/QuestionQualityView'
+import { BarChart2 } from 'lucide-react'
 
 export const QuestionBank: React.FC = () => {
   const location = useLocation()
+  const [activeTab, setActiveTab] = useState<'bank' | 'quality'>('bank')
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -35,6 +40,7 @@ export const QuestionBank: React.FC = () => {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [aiModalOpen, setAiModalOpen] = useState(false)
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null)
 
   const [formData, setFormData] = useState({
@@ -180,6 +186,14 @@ export const QuestionBank: React.FC = () => {
 
         <div className="flex items-center gap-3 flex-wrap self-start sm:self-auto">
           <button
+            onClick={() => setAiModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 text-white font-bold text-xs shadow-md shadow-purple-200 hover:bg-purple-700 transition-all cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>AI Question Generator</span>
+          </button>
+
+          <button
             onClick={() => setImportModalOpen(true)}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs shadow-md shadow-emerald-200 hover:bg-emerald-700 transition-all cursor-pointer"
           >
@@ -204,8 +218,42 @@ export const QuestionBank: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+      {/* Primary Mode Tabs: Question Bank Items vs Question Quality Engine */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <button
+          onClick={() => setActiveTab('bank')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'bank'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <HelpCircle className="w-4 h-4" />
+          <span>Question Bank Items ({questions.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('quality')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'quality'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <BarChart2 className="w-4 h-4" />
+          <span>Question Quality Engine</span>
+          <span className="px-1.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-100 text-[10px] font-extrabold uppercase">
+            Intelligence
+          </span>
+        </button>
+      </div>
+
+      {activeTab === 'quality' ? (
+        <QuestionQualityView />
+      ) : (
+        <>
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
           <button
             onClick={() => setActiveSection('all')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -374,6 +422,8 @@ export const QuestionBank: React.FC = () => {
             </div>
           ))}
         </div>
+      )}
+      </>
       )}
 
       {modalOpen && (
@@ -559,6 +609,13 @@ export const QuestionBank: React.FC = () => {
         onClose={() => setImportModalOpen(false)}
         onImportSuccess={loadQuestions}
         existingQuestions={questions}
+        initialSection={activeSection}
+      />
+
+      <AIQuestionGeneratorModal
+        isOpen={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        onImportSuccess={loadQuestions}
         initialSection={activeSection}
       />
     </div>

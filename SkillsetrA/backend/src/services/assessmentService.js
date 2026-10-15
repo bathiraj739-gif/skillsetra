@@ -33,24 +33,63 @@ async function createAssessment(data, userId) {
   try {
     await client.query('BEGIN');
 
-    const { uniqueIds, totalMarks } = await _validateQuestionsAndGetMarks(client, data.questionIds);
+    const mode = data.assessment_mode === 'ADAPTIVE' || data.assessmentMode === 'ADAPTIVE' ? 'ADAPTIVE' : 'STANDARD';
+    const startingDiff = ['EASY', 'MEDIUM', 'HARD'].includes(String(data.starting_difficulty || data.startingDifficulty).toUpperCase())
+      ? String(data.starting_difficulty || data.startingDifficulty).toUpperCase()
+      : 'MEDIUM';
+    const minQs = Math.max(1, parseInt(data.min_questions || data.minQuestions || 20, 10));
+    const maxQs = Math.max(minQs, parseInt(data.max_questions || data.maxQuestions || 30, 10));
 
+    let uniqueIds = [];
+    let totalMarks = 0;
+
+    const hasQuestions = Array.isArray(data.questionIds) && data.questionIds.length > 0;
+
+    if (mode === 'STANDARD') {
+      const qRes = await _validateQuestionsAndGetMarks(client, data.questionIds);
+      uniqueIds = qRes.uniqueIds;
+      totalMarks = qRes.totalMarks;
+    } else {
+      // ADAPTIVE mode
+      if (hasQuestions) {
+        const qRes = await _validateQuestionsAndGetMarks(client, data.questionIds);
+        uniqueIds = qRes.uniqueIds;
+        totalMarks = qRes.totalMarks;
+      } else {
+        // Pool can come from master question bank
+        totalMarks = maxQs * 1;
+      }
+    }
+
+    const initialStatus = data.status ? String(data.status).toUpperCase() : 'DRAFT';
     const assessmentRes = await client.query(
-      `INSERT INTO assessments (title, description, duration_minutes, total_marks, status, created_by)
-       VALUES ($1, $2, $3, $4, 'DRAFT', $5) RETURNING *`,
-      [data.title, data.description || null, data.durationMinutes, totalMarks, userId]
+      `INSERT INTO assessments (title, description, duration_minutes, total_marks, status, created_by, assessment_mode, starting_difficulty, min_questions, max_questions)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [
+        data.title,
+        data.description || null,
+        data.durationMinutes || data.duration_minutes || 30,
+        totalMarks,
+        initialStatus,
+        userId,
+        mode,
+        startingDiff,
+        minQs,
+        maxQs
+      ]
     );
 
     const assessment = assessmentRes.rows[0];
 
-    // Insert assessment_questions
-    // questionIds defines the order
-    const orderedIds = [...new Set(data.questionIds)]; // ensure uniqueness but keep array order
-    for (let i = 0; i < orderedIds.length; i++) {
-      await client.query(
-        `INSERT INTO assessment_questions (assessment_id, question_id, question_order) VALUES ($1, $2, $3)`,
-        [assessment.id, orderedIds[i], i + 1]
-      );
+    // Insert assessment_questions if provided
+    if (uniqueIds.length > 0) {
+      const orderedIds = [...new Set(data.questionIds)];
+      for (let i = 0; i < orderedIds.length; i++) {
+        await client.query(
+          `INSERT INTO assessment_questions (assessment_id, question_id, question_order) VALUES ($1, $2, $3)`,
+          [assessment.id, orderedIds[i], i + 1]
+        );
+      }
     }
 
     await client.query(
@@ -98,6 +137,10 @@ async function getAssessments(filters) {
 
   const dataQuery = `
     SELECT a.id, a.title, a.description, a.duration_minutes, a.total_marks, a.status, a.created_by, a.created_at, a.updated_at,
+           COALESCE(a.assessment_mode, 'STANDARD') as assessment_mode,
+           COALESCE(a.starting_difficulty, 'MEDIUM') as starting_difficulty,
+           COALESCE(a.min_questions, 20) as min_questions,
+           COALESCE(a.max_questions, 30) as max_questions,
            COALESCE((SELECT COUNT(*) FROM assessment_questions aq WHERE aq.assessment_id = a.id), 0) as question_count,
            COALESCE((SELECT COUNT(*) FROM assessment_questions aq JOIN questions q ON aq.question_id = q.id WHERE aq.assessment_id = a.id AND q.category = 'APTITUDE'), 0) as aptitude_count,
            COALESCE((SELECT COUNT(*) FROM assessment_questions aq JOIN questions q ON aq.question_id = q.id WHERE aq.assessment_id = a.id AND q.category = 'VERBAL'), 0) as verbal_count
@@ -127,6 +170,10 @@ async function getAssessments(filters) {
 async function getAssessmentById(id) {
   const assRes = await pool.query(`
     SELECT a.*,
+           COALESCE(a.assessment_mode, 'STANDARD') as assessment_mode,
+           COALESCE(a.starting_difficulty, 'MEDIUM') as starting_difficulty,
+           COALESCE(a.min_questions, 20) as min_questions,
+           COALESCE(a.max_questions, 30) as max_questions,
            COALESCE((SELECT COUNT(*) FROM assessment_questions aq WHERE aq.assessment_id = a.id), 0) as question_count,
            COALESCE((SELECT COUNT(*) FROM assessment_questions aq JOIN questions q ON aq.question_id = q.id WHERE aq.assessment_id = a.id AND q.category = 'APTITUDE'), 0) as aptitude_count,
            COALESCE((SELECT COUNT(*) FROM assessment_questions aq JOIN questions q ON aq.question_id = q.id WHERE aq.assessment_id = a.id AND q.category = 'VERBAL'), 0) as verbal_count
@@ -166,6 +213,10 @@ async function updateAssessment(id, data, userId) {
     const durationMinutes = data.durationMinutes != null ? Number(data.durationMinutes) : (data.duration_minutes != null ? Number(data.duration_minutes) : current.duration_minutes);
     const questionIds = data.questionIds || data.question_ids;
     const status = data.status ? String(data.status).toUpperCase() : current.status;
+    const mode = data.assessment_mode || data.assessmentMode || current.assessment_mode || 'STANDARD';
+    const startingDiff = data.starting_difficulty || data.startingDifficulty || current.starting_difficulty || 'MEDIUM';
+    const minQs = data.min_questions || data.minQuestions || current.min_questions || 20;
+    const maxQs = data.max_questions || data.maxQuestions || current.max_questions || 30;
 
     // Check if attempts exist
     const attemptCheck = await client.query(`SELECT 1 FROM attempts WHERE assessment_id = $1 LIMIT 1`, [id]);
@@ -196,14 +247,22 @@ async function updateAssessment(id, data, userId) {
            duration_minutes = $3,
            total_marks = $4,
            status = $5,
+           assessment_mode = $6,
+           starting_difficulty = $7,
+           min_questions = $8,
+           max_questions = $9,
            updated_at = NOW()
-       WHERE id = $6 RETURNING *`,
+       WHERE id = $10 RETURNING *`,
       [
         data.title || current.title,
         data.description !== undefined ? data.description : current.description,
         durationMinutes,
         totalMarks,
         status,
+        mode,
+        startingDiff,
+        minQs,
+        maxQs,
         id
       ]
     );
@@ -236,23 +295,39 @@ async function publishAssessment(id, userId) {
     const assessment = assRes.rows[0];
     if (assessment.status !== 'DRAFT') throw new Error('NOT_DRAFT');
     
-    if (assessment.total_marks <= 0 || assessment.duration_minutes <= 0 || !assessment.title) {
+    if (assessment.duration_minutes <= 0 || !assessment.title) {
       throw new Error('INVALID_ASSESSMENT_CONFIG');
     }
 
+    const isAdaptive = assessment.assessment_mode === 'ADAPTIVE';
+
     const qCountRes = await client.query(`SELECT COUNT(*) FROM assessment_questions WHERE assessment_id = $1`, [id]);
-    if (parseInt(qCountRes.rows[0].count, 10) === 0) {
-      throw new Error('NO_QUESTIONS');
+    const linkedCount = parseInt(qCountRes.rows[0].count, 10);
+
+    if (!isAdaptive) {
+      if (linkedCount === 0) {
+        throw new Error('NO_QUESTIONS');
+      }
+    } else {
+      // In adaptive mode, if questions are not directly linked, verify active question bank has aptitude & verbal questions
+      if (linkedCount === 0) {
+        const bankCheck = await client.query(`SELECT COUNT(*) FROM questions WHERE is_active = true AND category IN ('APTITUDE', 'VERBAL')`);
+        if (parseInt(bankCheck.rows[0].count, 10) === 0) {
+          throw new Error('NO_ACTIVE_QUESTIONS_IN_BANK');
+        }
+      }
     }
 
     // Check if any linked questions are inactive
-    const inactiveCheck = await client.query(
-      `SELECT q.id FROM assessment_questions aq 
-       JOIN questions q ON aq.question_id = q.id 
-       WHERE aq.assessment_id = $1 AND q.is_active = false LIMIT 1`, 
-      [id]
-    );
-    if (inactiveCheck.rows.length > 0) throw new Error('CONTAINS_INACTIVE_QUESTIONS');
+    if (linkedCount > 0) {
+      const inactiveCheck = await client.query(
+        `SELECT q.id FROM assessment_questions aq 
+         JOIN questions q ON aq.question_id = q.id 
+         WHERE aq.assessment_id = $1 AND q.is_active = false LIMIT 1`, 
+        [id]
+      );
+      if (inactiveCheck.rows.length > 0) throw new Error('CONTAINS_INACTIVE_QUESTIONS');
+    }
 
     const result = await client.query(
       `UPDATE assessments SET status = 'PUBLISHED', updated_at = NOW() WHERE id = $1 RETURNING *`,

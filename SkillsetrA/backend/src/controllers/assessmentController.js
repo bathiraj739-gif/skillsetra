@@ -5,6 +5,9 @@ async function createAssessment(req, res, next) {
     const data = req.body;
     data.durationMinutes = data.durationMinutes != null ? Number(data.durationMinutes) : (data.duration_minutes != null ? Number(data.duration_minutes) : null);
     data.questionIds = data.questionIds || data.question_ids;
+    if (data.status) {
+      data.status = String(data.status).toUpperCase();
+    }
 
     if (!data.title || typeof data.title !== 'string' || data.title.trim() === '') {
       return res.status(400).json({ success: false, message: 'Invalid title' });
@@ -12,8 +15,9 @@ async function createAssessment(req, res, next) {
     if (!data.durationMinutes || !Number.isInteger(data.durationMinutes) || data.durationMinutes <= 0) {
       return res.status(400).json({ success: false, message: 'Invalid durationMinutes' });
     }
-    if (!data.questionIds || !Array.isArray(data.questionIds) || data.questionIds.length === 0) {
-      return res.status(400).json({ success: false, message: 'questionIds must be a non-empty array' });
+    const mode = (data.assessment_mode || data.assessmentMode || 'STANDARD').toUpperCase();
+    if (mode === 'STANDARD' && (!data.questionIds || !Array.isArray(data.questionIds) || data.questionIds.length === 0)) {
+      return res.status(400).json({ success: false, message: 'questionIds must be a non-empty array for standard assessments' });
     }
 
     try {

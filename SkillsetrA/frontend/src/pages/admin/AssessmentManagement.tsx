@@ -42,6 +42,10 @@ const CreateEditAssessmentModal: React.FC<CreateEditAssessmentModalProps> = ({
     duration_minutes: editingAssessment?.duration_minutes || 30,
     passing_percentage: editingAssessment?.passing_percentage || 50,
     status: (editingAssessment?.status || 'published') as AssessmentStatus,
+    assessment_mode: (editingAssessment?.assessment_mode || 'STANDARD') as 'STANDARD' | 'ADAPTIVE',
+    starting_difficulty: (editingAssessment?.starting_difficulty || 'MEDIUM') as 'EASY' | 'MEDIUM' | 'HARD',
+    min_questions: editingAssessment?.min_questions || 20,
+    max_questions: editingAssessment?.max_questions || 30,
   })
 
   const [allQuestions, setAllQuestions] = useState<Question[]>([])
@@ -271,6 +275,97 @@ const CreateEditAssessmentModal: React.FC<CreateEditAssessmentModalProps> = ({
                   <option value="archived">Archived</option>
                 </select>
               </div>
+            </div>
+
+            {/* Assessment Mode Configuration */}
+            <div className="pt-2 border-t border-slate-200">
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                Assessment Engine Mode
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, assessment_mode: 'STANDARD' })}
+                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                    formData.assessment_mode === 'STANDARD'
+                      ? 'bg-indigo-50/80 border-indigo-500 ring-2 ring-indigo-400'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900">STANDARD</span>
+                    {formData.assessment_mode === 'STANDARD' && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Fixed question set selected from Question Bank. Shuffled per student.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, assessment_mode: 'ADAPTIVE' })}
+                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                    formData.assessment_mode === 'ADAPTIVE'
+                      ? 'bg-purple-50/80 border-purple-500 ring-2 ring-purple-400'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-purple-900 flex items-center gap-1">
+                      <span>⚡ ADAPTIVE ENGINE</span>
+                    </span>
+                    {formData.assessment_mode === 'ADAPTIVE' && <CheckCircle2 className="w-4 h-4 text-purple-600" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Dynamic difficulty adjustment based on student performance per question.
+                  </p>
+                </button>
+              </div>
+
+              {formData.assessment_mode === 'ADAPTIVE' && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 p-3.5 bg-purple-50/50 rounded-2xl border border-purple-200">
+                  <div>
+                    <label className="block text-[11px] font-bold text-purple-950 uppercase tracking-wider mb-1">
+                      Starting Difficulty
+                    </label>
+                    <select
+                      value={formData.starting_difficulty}
+                      onChange={(e) => setFormData({ ...formData, starting_difficulty: e.target.value as any })}
+                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-900"
+                    >
+                      <option value="EASY">EASY</option>
+                      <option value="MEDIUM">MEDIUM (Recommended)</option>
+                      <option value="HARD">HARD</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-purple-950 uppercase tracking-wider mb-1">
+                      Min Questions
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={formData.min_questions}
+                      onChange={(e) => setFormData({ ...formData, min_questions: Math.max(1, Number(e.target.value)) })}
+                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-purple-950 uppercase tracking-wider mb-1">
+                      Max Questions
+                    </label>
+                    <input
+                      type="number"
+                      min={formData.min_questions}
+                      value={formData.max_questions}
+                      onChange={(e) => setFormData({ ...formData, max_questions: Math.max(formData.min_questions, Number(e.target.value)) })}
+                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-900"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -621,9 +716,20 @@ export const AssessmentManagement: React.FC = () => {
               >
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-bold uppercase tracking-wider">
-                      Status: {a.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-bold uppercase tracking-wider">
+                        {a.status}
+                      </span>
+                      {a.assessment_mode === 'ADAPTIVE' ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-300 text-purple-800 text-[10px] font-extrabold flex items-center gap-1">
+                          <span>⚡ ADAPTIVE</span>
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold">
+                          STANDARD
+                        </span>
+                      )}
+                    </div>
 
                     <button
                       onClick={() => handleOpenEditModal(a)}
@@ -636,6 +742,13 @@ export const AssessmentManagement: React.FC = () => {
 
                   <h3 className="text-lg font-bold text-slate-900">{a.title}</h3>
                   <p className="text-xs text-slate-500 leading-relaxed">{a.description || 'Standard Placement Evaluation'}</p>
+
+                  {a.assessment_mode === 'ADAPTIVE' && (
+                    <div className="bg-purple-50/60 p-2.5 rounded-xl border border-purple-100 text-[11px] flex items-center justify-between text-purple-900 font-medium">
+                      <span>Start Diff: <strong className="font-bold text-purple-950">{a.starting_difficulty || 'MEDIUM'}</strong></span>
+                      <span>Target Qs: <strong className="font-bold text-purple-950">{a.min_questions || 20} - {a.max_questions || 30} Qs</strong></span>
+                    </div>
+                  )}
 
                   <div className="pt-2 border-t border-slate-100 grid grid-cols-3 gap-2 text-center text-xs">
                     <div className="bg-amber-50/60 p-2.5 rounded-xl border border-amber-100">

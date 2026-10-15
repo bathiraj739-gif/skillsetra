@@ -14,6 +14,7 @@ import {
   ArrowRight,
   ShieldCheck,
 } from 'lucide-react'
+import { PlacementIntelligenceView } from '../../components/admin/PlacementIntelligenceView'
 
 export const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState({
@@ -180,6 +181,9 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </Link>
       </div>
+
+      {/* PLACEMENT INTELLIGENCE SECTION */}
+      <PlacementIntelligenceView />
     </div>
   )
 }

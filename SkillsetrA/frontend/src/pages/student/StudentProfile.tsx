@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { studentService } from '../../services/studentService'
 import { authService } from '../../services/authService'
@@ -18,6 +18,7 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
+  Phone,
 } from 'lucide-react'
 
 export const StudentProfile: React.FC = () => {
@@ -28,6 +29,25 @@ export const StudentProfile: React.FC = () => {
   const [registerNumber, setRegisterNumber] = useState(profile?.register_number || '')
   const [department, setDepartment] = useState(profile?.department || DEPARTMENTS[3])
   const [year, setYear] = useState<number>(profile?.year || 3)
+  const [section, setSection] = useState(profile?.section || '')
+  const [phone, setPhone] = useState(profile?.phone || '')
+
+  useEffect(() => {
+    if (profile) {
+      if (profile.name) setName(profile.name)
+      if (profile.register_number) setRegisterNumber(profile.register_number)
+      if (profile.department) setDepartment(profile.department)
+      if (profile.year != null) {
+        const yNum = typeof profile.year === 'number' ? profile.year : parseInt(String(profile.year), 10)
+        if (!isNaN(yNum) && yNum >= 1 && yNum <= 4) setYear(yNum)
+      } else if (profile.year_of_study) {
+        const parsed = parseInt(String(profile.year_of_study), 10)
+        if (!isNaN(parsed) && parsed >= 1 && parsed <= 4) setYear(parsed)
+      }
+      if (profile.section) setSection(profile.section)
+      if (profile.phone) setPhone(profile.phone)
+    }
+  }, [profile])
 
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -54,10 +74,11 @@ export const StudentProfile: React.FC = () => {
 
     try {
       await studentService.updateProfile(profile.id, {
-        name,
-        register_number: registerNumber,
+        name: name.trim(),
         department,
         year: Number(year),
+        section: section.trim(),
+        phone: phone.trim(),
       })
       await refreshProfile()
       setSuccess(true)
@@ -195,7 +216,7 @@ export const StudentProfile: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                Register Number
+                Register Number (Institutional ID)
               </label>
               <div className="relative rounded-xl">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -203,12 +224,12 @@ export const StudentProfile: React.FC = () => {
                 </div>
                 <input
                   type="text"
-                  required
+                  disabled
                   value={registerNumber}
-                  onChange={(e) => setRegisterNumber(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-hidden transition-all"
+                  className="block w-full pl-10 pr-3 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-mono text-slate-600 cursor-not-allowed"
                 />
               </div>
+              <p className="text-[11px] text-slate-400 mt-1">Register number is assigned by administration.</p>
             </div>
 
             <div>
@@ -233,25 +254,59 @@ export const StudentProfile: React.FC = () => {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                Department
+              </label>
+              <div className="relative rounded-xl">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <select
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="block w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-hidden transition-all"
+                >
+                  {DEPARTMENTS.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                Section
+              </label>
+              <input
+                type="text"
+                value={section}
+                onChange={(e) => setSection(e.target.value.toUpperCase())}
+                placeholder="e.g. A"
+                maxLength={10}
+                className="block w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-hidden transition-all"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-              Department
+              Phone Number
             </label>
             <div className="relative rounded-xl">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                <BookOpen className="w-5 h-5" />
+                <Phone className="w-4 h-4" />
               </div>
-              <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                className="block w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-hidden transition-all"
-              >
-                {DEPARTMENTS.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
-                ))}
-              </select>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. 9876543210"
+                className="block w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-hidden transition-all"
+              />
             </div>
           </div>
 
